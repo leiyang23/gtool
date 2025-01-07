@@ -29,10 +29,15 @@ type Trigger struct {
 	Table   string
 
 	listener  *pq.Listener
-	callbacks []func(msg *Msg)
-	signal    chan int
+	callbacks []func(msg Msg)
+
+	// 中止信号
+	// 999: 手动停止
+	// 888: 连接异常停止
+	abortSignal chan int
 
 	// 运行状态
+	// -2: 监听连接异常
 	// -1: 回调函数执行异常
 	//  0: 初始状态，未启动
 	//  1: 监听器已启动
@@ -127,7 +132,7 @@ FOR EACH ROW EXECUTE PROCEDURE notify_change();
 }
 
 // Listen 监听表数据改动
-func (t *Trigger) Listen(callbacks []func(msg *Msg)) (err error) {
+func (t *Trigger) Listen(callbacks []func(msg Msg)) (err error) {
 	if t.ListenerAlive() {
 		err = fmt.Errorf("already listen")
 		return
@@ -136,8 +141,7 @@ func (t *Trigger) Listen(callbacks []func(msg *Msg)) (err error) {
 	listener := pq.NewListener(t.ConnStr, time.Millisecond*500, time.Millisecond*5000, func(event pq.ListenerEventType, err error) {
 		if event == pq.ListenerEventDisconnected || event == pq.ListenerEventConnectionAttemptFailed {
 			t.err = fmt.Errorf("listener disconnected: %v", err)
-			t.state = -1
-			t.signal <- 999
+			t.abortSignal <- 888
 		}
 	})
 
@@ -149,7 +153,7 @@ func (t *Trigger) Listen(callbacks []func(msg *Msg)) (err error) {
 
 	t.listener = listener
 	t.callbacks = callbacks
-	t.signal = make(chan int)
+	t.abortSignal = make(chan int)
 	t.state = 1
 
 	go t.do()
@@ -157,10 +161,11 @@ func (t *Trigger) Listen(callbacks []func(msg *Msg)) (err error) {
 	return
 }
 
+// do 执行回调函数
 func (t *Trigger) do() {
 	defer func() {
 		if err := recover(); err != nil {
-			t.signal <- -1
+			t.state = -1
 			t.err = fmt.Errorf("do error: %v", err)
 		}
 	}()
@@ -168,14 +173,19 @@ func (t *Trigger) do() {
 	t.state = 2
 	for {
 		select {
-		case <-t.signal:
-			t.state = 3
+		case signal := <-t.abortSignal:
+			switch signal {
+			case 888:
+				t.state = -2
+			case 999:
+				t.state = 3
+			}
 			return
 		case i := <-t.listener.Notify:
 			msg := new(Msg)
 			_ = json.Unmarshal([]byte(i.Extra), msg)
 			for _, cb := range t.callbacks {
-				cb(msg)
+				cb(*msg)
 			}
 		}
 	}
@@ -203,7 +213,7 @@ func (t *Trigger) Stop() {
 		return
 	}
 
-	t.signal <- 999
+	t.abortSignal <- 999
 	_ = t.listener.Close()
 
 	for i := 0; i < 100; i++ {
@@ -213,5 +223,5 @@ func (t *Trigger) Stop() {
 		time.Sleep(time.Millisecond * 100)
 	}
 
-	close(t.signal)
+	close(t.abortSignal)
 }

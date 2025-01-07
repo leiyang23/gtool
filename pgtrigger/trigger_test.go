@@ -7,8 +7,8 @@ import (
 )
 
 var trigger = Trigger{
-	ConnStr: "postgres://postgres:123456@127.0.0.1:5432/qq?sslmode=disable",
-	Schema:  "public",
+	ConnStr: "postgres://postgres:ztesoft123@10.10.236.160:18200/zdcp?sslmode=disable",
+	Schema:  "alarm",
 	Table:   "alarm_item",
 }
 
@@ -22,11 +22,15 @@ func TestSetTrigger(t *testing.T) {
 
 func TestListen(t *testing.T) {
 
-	cb := func(d *Msg) {
-		fmt.Println(22, *d)
+	cb11 := func(d Msg) {
+		fmt.Printf("11 %p\n", &d)
 	}
 
-	err := trigger.Listen([]func(d *Msg){cb})
+	cb12 := func(d Msg) {
+		fmt.Printf("12 %p\n", &d)
+	}
+
+	err := trigger.Listen([]func(d Msg){cb11, cb12})
 	if err != nil {
 		t.Error(err)
 	}
