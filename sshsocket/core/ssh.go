@@ -131,17 +131,17 @@ func (sshTool *SSHTool) Exec(cmd string) (stdout string, stderr string, err erro
 	return
 }
 
-func (sshTool *SSHTool) Print(cmd string) {
-	fmt.Println("#", cmd)
+func (sshTool *SSHTool) PrintExec(cmd string) {
+	log.Println("#", cmd)
 	stdout, stderr, err := sshTool.Exec(cmd)
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return
 	}
 
-	fmt.Println("#", stdout)
+	log.Println(">", stdout)
 	if stderr != "" {
-		fmt.Println("#", stderr)
+		log.Println("x", stderr)
 	}
 }
 
