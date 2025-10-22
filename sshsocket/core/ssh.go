@@ -65,13 +65,9 @@ func (sshTool *SSHTool) Upload(localPath string, remotePath string) error {
 	defer Close(remoteFile)
 
 	// 复制文件内容
-	buf, err := io.ReadAll(localFile)
+	_, err = io.Copy(remoteFile, localFile)
 	if err != nil {
-		return fmt.Errorf("读取本地文件内容失败: %s", err)
-	}
-
-	if _, err := remoteFile.Write(buf); err != nil {
-		return fmt.Errorf("写入远程文件失败: %s", err)
+		return fmt.Errorf("文件上传失败: %s", err)
 	}
 
 	return err
@@ -118,7 +114,7 @@ func (sshTool *SSHTool) Exec(cmd string) (stdout string, stderr string, err erro
 		err = fmt.Errorf("创建会话失败: %s", err)
 		return "", "", err
 	}
-	//defer Close(session)  // session.Run 会关闭 session
+	//defer Close(session)  // session request 结束后，channel 会自动关闭（正常情况下），为了防止泄露，最好手动关闭
 
 	var stdoutBuffer bytes.Buffer
 	var stderrBuffer bytes.Buffer
@@ -153,6 +149,6 @@ func Close(closer io.Closer) {
 	err := closer.Close()
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
-		log.Printf("%s-%d关闭错误: %s", file, line, err)
+		log.Printf("%s:%d 关闭错误: %s", file, line, err)
 	}
 }
